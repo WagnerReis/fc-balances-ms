@@ -1,98 +1,337 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 💰 Balances Microservice
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Microsserviço desenvolvido em **Node.js** com **NestJS** responsável por fornecer consultas rápidas de saldos das contas. Este serviço consome eventos do Kafka e mantém uma view materializada no PostgreSQL para otimizar as consultas.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 📋 Visão Geral
 
-## Description
+O **Balances** é um microsserviço de **consulta (Query)** em uma arquitetura **CQRS** (Command Query Responsibility Segregation). Ele:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- 📥 **Consome eventos** do Kafka (`BalanceUpdated`)
+- 🗄️ **Armazena dados** em PostgreSQL (view materializada)
+- 🔍 **Fornece API REST** para consulta rápida de saldos
+- ⚡ **Otimiza performance** das consultas separando leitura de escrita
 
-## Project setup
+## 🏗️ Arquitetura
 
-```bash
-$ npm install
+```
+┌─────────────────┐    Kafka     ┌─────────────────┐    HTTP      ┌─────────────────┐
+│   Walletcore    │────Events────│    Balances     │────Query────│    Cliente      │
+│   (Command)     │              │    (Query)      │             │   (Frontend)    │
+└─────────────────┘              └─────────────────┘             └─────────────────┘
+       │                                 │
+       ▼                                 ▼
+┌─────────────────┐              ┌─────────────────┐
+│     MySQL       │              │   PostgreSQL    │
+│ (Source Truth)  │              │ (View Material) │
+└─────────────────┘              └─────────────────┘
 ```
 
-## Compile and run the project
+## 🚀 Tecnologias
 
-```bash
-# development
-$ npm run start
+- **Node.js** 22.17.1
+- **NestJS** 11.x (Framework)
+- **TypeScript** 5.7.x
+- **PostgreSQL** 16 (Banco de dados)
+- **Prisma** 6.15.x (ORM)
+- **KafkaJS** 2.2.4 (Cliente Kafka)
+- **Docker** & **Docker Compose**
 
-# watch mode
-$ npm run start:dev
+## 📁 Estrutura do Projeto
 
-# production mode
-$ npm run start:prod
+```
+src/
+├── balances/
+│   ├── balances.controller.ts     # Controller REST + Kafka Consumer
+│   ├── balances.service.ts        # Lógica de negócio
+│   ├── balances.module.ts         # Módulo NestJS
+│   ├── dto/
+│   │   └── create-balance.dto.ts  # DTOs de entrada
+│   ├── entities/
+│   │   └── balance.entity.ts      # Entidades
+│   └── repositories/
+│       ├── balance-repository.interface.ts  # Interface do repositório
+│       └── prisma/
+│           ├── balance-repository.ts        # Implementação Prisma
+│           └── prisma-balance.mapper.ts     # Mapeador de dados
+├── prisma/
+│   ├── prisma.module.ts           # Módulo Prisma
+│   └── prisma.service.ts          # Serviço Prisma
+├── app.module.ts                  # Módulo principal
+└── main.ts                        # Bootstrap da aplicação
 ```
 
-## Run tests
+## 🗄️ Modelo de Dados
 
-```bash
-# unit tests
-$ npm run test
+### Tabela: `balances`
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```sql
+CREATE TABLE balances (
+  id                      TEXT PRIMARY KEY,
+  account_id_from         TEXT NOT NULL,
+  account_id_to           TEXT NOT NULL,
+  balance_account_id_from DECIMAL(10,2) NOT NULL,
+  balance_account_id_to   DECIMAL(10,2) NOT NULL,
+  created_at              TIMESTAMP DEFAULT NOW(),
+  updated_at              TIMESTAMP DEFAULT NOW()
+);
 ```
 
-## Deployment
+## 🔗 API Endpoints
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### 📋 Consultar Saldo de Conta
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```http
+GET /balances/{account_id}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**Parâmetros:**
+- `account_id` (string): ID da conta para consulta
 
-## Resources
+**Resposta de Sucesso (200):**
+```json
+{
+  "id": "clr123...",
+  "accountIdFrom": "account-001",
+  "accountIdTo": "account-002", 
+  "balanceAccountIdFrom": 900.00,
+  "balanceAccountIdTo": 600.00,
+  "createdAt": "2025-09-02T14:30:00.000Z",
+  "updatedAt": "2025-09-02T14:30:00.000Z"
+}
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+**Resposta de Erro (404):**
+```json
+{
+  "statusCode": 404,
+  "message": "Account or Balance not found"
+}
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 📡 Kafka Integration
 
-## Support
+### Consumer
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Tópico:** `balances`  
+**Group ID:** `wallet`
 
-## Stay in touch
+### Formato da Mensagem Consumida
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```json
+{
+  "Name": "BalanceUpdated",
+  "Payload": {
+    "account_id_from": "account-001",
+    "account_id_to": "account-002",
+    "balance_account_id_from": 900.00,
+    "balance_account_id_to": 600.00
+  }
+}
+```
 
-## License
+## 🛠️ Configuração de Ambiente
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+### Variáveis de Ambiente
+
+```bash
+# Aplicação
+NODE_ENV=production
+PORT=3000
+
+# PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
+POSTGRES_DB=balances
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql://postgres:password@postgres:5432/balances?schema=public
+
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+```
+
+## 🚀 Como Executar
+
+### 🐳 Com Docker (Recomendado)
+
+```bash
+# No diretório raiz do projeto (desafio-eda)
+docker compose up -d
+```
+
+### 💻 Desenvolvimento Local
+
+```bash
+# 1. Instalar dependências
+npm install
+
+# 2. Configurar variáveis de ambiente
+cp .env.example .env
+
+# 3. Executar migrações do banco
+npx prisma migrate deploy
+
+# 4. Gerar client Prisma
+npx prisma generate
+
+# 5. Executar em modo desenvolvimento
+npm run start:dev
+
+# 6. Ou executar em produção
+npm run build
+npm run start:prod
+```
+
+## 🧪 Testes
+
+```bash
+# Testes unitários
+npm run test
+
+# Testes com watch
+npm run test:watch
+
+# Testes de cobertura
+npm run test:cov
+
+# Testes E2E
+npm run test:e2e
+```
+
+## 📊 Scripts Disponíveis
+
+```bash
+# Desenvolvimento
+npm run start:dev          # Executar com hot reload
+npm run start:debug        # Executar com debug
+
+# Build
+npm run build              # Compilar TypeScript
+
+# Produção
+npm run start:prod         # Executar versão compilada
+
+# Qualidade de Código
+npm run lint               # Executar linter
+npm run format             # Formatar código
+
+# Banco de Dados
+npx prisma migrate dev     # Executar migrações (dev)
+npx prisma migrate deploy  # Executar migrações (prod)
+npx prisma generate        # Gerar client Prisma
+npx prisma studio          # Interface visual do banco
+```
+
+## 🔍 Monitoramento & Debug
+
+### Logs da Aplicação
+
+```bash
+# Via Docker
+docker compose logs -f balances
+
+# Logs específicos
+docker compose logs -f balances | grep ERROR
+```
+
+### Prisma Studio
+
+```bash
+# Interface visual para visualizar dados
+npx prisma studio
+# Acesse: http://localhost:5555
+```
+
+### Conectar ao PostgreSQL
+
+```bash
+# Via Docker
+docker compose exec postgres psql -U postgres -d balances
+
+# Comandos úteis
+\dt              # Listar tabelas
+\d balances      # Descrever tabela balances
+SELECT * FROM balances LIMIT 10;
+```
+
+## 🐛 Troubleshooting
+
+### Problema: Erro de conexão com Kafka
+
+```bash
+# Verificar se o Kafka está rodando
+docker compose ps kafka
+
+# Verificar logs do Kafka
+docker compose logs kafka
+
+# Reiniciar serviços
+docker compose restart kafka balances
+```
+
+### Problema: Erro de conexão com PostgreSQL
+
+```bash
+# Verificar se o PostgreSQL está saudável
+docker compose ps postgres
+
+# Conectar manualmente ao banco
+docker compose exec postgres psql -U postgres -d balances -c "SELECT 1;"
+```
+
+### Problema: Migrações não aplicadas
+
+```bash
+# Executar migrações manualmente
+docker compose exec balances npx prisma migrate deploy
+
+# Ou resetar o banco (⚠️ APAGA DADOS)
+docker compose exec balances npx prisma migrate reset
+```
+
+### Problema: Dependências desatualizadas
+
+```bash
+# Reinstalar node_modules
+docker compose exec balances rm -rf node_modules package-lock.json
+docker compose exec balances npm install
+
+# Ou rebuild completo
+docker compose up --build balances
+```
+
+## 📈 Performance & Otimização
+
+### Índices Recomendados
+
+```sql
+-- Otimizar consultas por account_id
+CREATE INDEX idx_balances_account_from ON balances(account_id_from);
+CREATE INDEX idx_balances_account_to ON balances(account_id_to);
+
+-- Otimizar consultas por data
+CREATE INDEX idx_balances_created_at ON balances(created_at);
+```
+
+### Monitoramento de Performance
+
+- **Response Time**: Consultas devem ser < 100ms
+- **Memory Usage**: Monitorar uso de memória do Node.js
+- **Connection Pool**: Verificar pool de conexões do Prisma
+
+## 🤝 Integração com Walletcore
+
+Este microsserviço trabalha em conjunto com o **Walletcore**:
+
+1. **Walletcore** processa transações
+2. **Walletcore** publica eventos `BalanceUpdated` no Kafka
+3. **Balances** consome os eventos
+4. **Balances** atualiza a view materializada
+5. **Balances** fornece consultas rápidas via REST API
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](../LICENSE) para mais detalhes.
+
+---
+
+**Desenvolvido com ❤️ usando NestJS**
